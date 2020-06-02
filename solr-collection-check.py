@@ -54,7 +54,7 @@ def security_auth(configs, host_name, infra_solr_user):
         solr_kerberos_keytab=solr_kerberos_keytab,
         solr_principal=solr_principal)
 
-    Execute(kinit_cmd, user=infra_solr_user)    
+    Execute(kinit_cmd, user=infra_solr_user)
 
 
 def execute(configs={}, parameters={}, host_name=None):
@@ -132,7 +132,7 @@ def execute(configs={}, parameters={}, host_name=None):
                #return (RESULT_CODE_CRITICAL, ["shard: %s" % shard + " " +"of collection: %s" % key + " " +"is DOWN"])
                pass
 
-    if outdata:
+    if outdata['shards'] or outdata['replicas']:
         return (RESULT_CODE_CRITICAL, ["Replicas or Shards found not active. %s" % json.dumps(outdata)])
     else:
         return (RESULT_CODE_OK, ["All Shards and replicas healthy"])
