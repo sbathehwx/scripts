@@ -1,0 +1,33 @@
+{
+    "AlertDefinition" : {
+      "component_name" : "SOLR_SERVER",
+      "description" : "This host-level alert is triggered if any of the collections/replicas/shards are not active",
+      "enabled" : true,
+      "interval" : 1,
+      "label" : "Solr Collection status",
+      "name" : "solr_collection_status_check",
+      "repeat_tolerance" : 1,
+      "scope" : "ANY",
+      "service_name" : "SOLR",
+      "source" : {
+      "parameters": [
+        {
+          "name": "check.solr.port",
+          "display_name": "Solr Port",
+          "value": 8983,
+          "type": "NUMERIC",
+          "description": "Port where solr is running"
+        },
+        {
+            "name" : "check.connection.timeout",
+            "units" : "seconds",
+            "value" : 5,
+            "type" : "NUMERIC",
+            "visibility" : "HIDDEN"
+          }
+      ],
+        "path" : "SOLR/6.6.2/package/scripts/solr-collection-check.py",
+        "type" : "SCRIPT"
+      }
+    }
+  }

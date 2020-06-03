@@ -11,14 +11,19 @@ from resource_management.core.environment import Environment
 
 
 SECURITY_ENABLED_KEY = '{{cluster-env/security_enabled}}'
-SOLR_PORT_KEY = '{{infra-solr-env/infra_solr_port}}'
-SOLR_KEYTAB_KEY = '{{infra-solr-env/infra_solr_kerberos_keytab}}'
-SOLR_PRINCIPAL_KEY = '{{infra-solr-env/infra_solr_kerberos_principal}}'
-SOLR_USER_KEY = '{{infra-solr-env/infra_solr_user}}'
 
+# Solr setting keys in Ambari
+SOLR_PORT_KEY = 'check.solr.port'
+SOLR_PORT_DEFAULT = '8886'
+SOLR_CONNECTION_TIMEOUT_KEY = 'check.connection.timeout'
+SOLR_CONNECTION_TIMEOUT_DEFAULT = 5
 UI_SSL_ENABLED = '{{infra-solr-env/infra_solr_ssl_enabled}}'
 
+# Kerberos keys
 KRB_EXEC_SEARCH_PATHS_KEY = '{{kerberos-env/executable_search_paths}}'
+SMOKEUSER_KEYTAB_KEY = '{{cluster-env/smokeuser_keytab}}'
+SMOKEUSER_PRINCIPAL_KEY = '{{cluster-env/smokeuser_principal_name}}'
+SMOKEUSER_KEY = '{{cluster-env/smokeuser}}'
 
 RESULT_CODE_OK = 'OK'
 RESULT_CODE_CRITICAL = 'CRITICAL'
@@ -26,11 +31,11 @@ RESULT_CODE_UNKNOWN = 'UNKNOWN'
 
 
 def get_tokens():
-    return (SECURITY_ENABLED_KEY, SOLR_USER_KEY, SOLR_KEYTAB_KEY, SOLR_PRINCIPAL_KEY,
-            SOLR_USER_KEY, UI_SSL_ENABLED, KRB_EXEC_SEARCH_PATHS_KEY,
+    return (SECURITY_ENABLED_KEY, SMOKEUSER_KEYTAB_KEY, SMOKEUSER_PRINCIPAL_KEY,
+            SMOKEUSER_KEY, UI_SSL_ENABLED, KRB_EXEC_SEARCH_PATHS_KEY,
             SOLR_PORT_KEY)
 
-def security_auth(configs, host_name, infra_solr_user):
+def security_auth(configs, host_name, solr_user):
     """
   Call kinit before pursuit with any other action
   :type configs dict
@@ -38,9 +43,9 @@ def security_auth(configs, host_name, infra_solr_user):
   :type solr_user str
   """
     solr_kerberos_keytab = configs[
-        SOLR_KEYTAB_KEY] if SOLR_KEYTAB_KEY in configs else None
-    solr_principal = configs[SOLR_PRINCIPAL_KEY].replace(
-        '_HOST', host_name.lower()) if SOLR_PRINCIPAL_KEY in configs else None
+        SMOKEUSER_KEYTAB_KEY] if SMOKEUSER_KEYTAB_KEY in configs else None
+    solr_principal = configs[SMOKEUSER_PRINCIPAL_KEY].replace(
+        '_HOST', host_name.lower()) if SMOKEUSER_PRINCIPAL_KEY in configs else None
     krb_executable_search_paths = configs[
         KRB_EXEC_SEARCH_PATHS_KEY] if KRB_EXEC_SEARCH_PATHS_KEY in configs else None
     kinit_path_local = get_kinit_path(krb_executable_search_paths)
@@ -54,7 +59,7 @@ def security_auth(configs, host_name, infra_solr_user):
         solr_kerberos_keytab=solr_kerberos_keytab,
         solr_principal=solr_principal)
 
-    Execute(kinit_cmd, user=infra_solr_user)
+    Execute(kinit_cmd, user=solr_user)
 
 
 def execute(configs={}, parameters={}, host_name=None):
@@ -69,46 +74,50 @@ def execute(configs={}, parameters={}, host_name=None):
 
     env = Environment.get_instance()
 
-    infra_solr_user = configs[SOLR_USER_KEY]
+    solr_user = configs[SMOKEUSER_KEY]
 
     ui_ssl_enabled = False
     if UI_SSL_ENABLED in configs:
         ui_ssl_enabled = str(configs[UI_SSL_ENABLED]).upper() == 'TRUE'
 
-    solr_port = configs[SOLR_PORT_KEY]
-
     security_enabled = False
     if SECURITY_ENABLED_KEY in configs:
         security_enabled = str(configs[SECURITY_ENABLED_KEY]).upper() == 'TRUE'
 
+    # check parameters
+    solr_port = SOLR_PORT_DEFAULT
+    if SOLR_PORT_KEY in parameters:
+        solr_port = parameters[SOLR_PORT_KEY]
+
+    connection_timeout = SOLR_CONNECTION_TIMEOUT_DEFAULT
+    if SOLR_CONNECTION_TIMEOUT_KEY in parameters:
+        connection_timeout = parameters[SOLR_CONNECTION_TIMEOUT_KEY]
+
     if security_enabled:
         try:
-            security_auth(configs, host_name, infra_solr_user)
+            security_auth(configs, host_name, solr_user)
         except Exception as e:
             return RESULT_CODE_CRITICAL, ["kinit error: " + str(e)]
 
-    curl_auth = None
     if ui_ssl_enabled:
         scheme = "https"
-        curl_auth = "--cert /etc/security/certificates/host.crt --key /etc/security/certificates/host.key"
     else:
         scheme = "http"
 
     state_file = "{}/solrstatus.json".format(env.tmp_dir)
-    cmd = "curl -s -o {} --negotiate -u: -k '{}://{}:{}/solr/admin/collections?action=clusterstatus&wt=json'".format(state_file,scheme,host_name,solr_port)
+    cmd = "curl -s -m {} -o {} --negotiate -u: -k '{}://{}:{}/solr/admin/collections?action=clusterstatus&wt=json'".format(
+        connection_timeout, state_file,scheme,host_name,solr_port)
     try:
-       Execute(cmd, tries=2, try_sleep=3, user=infra_solr_user, logoutput=True) 
+       Execute(cmd, tries=2, try_sleep=3, user=solr_user, logoutput=True) 
     except:
       return (RESULT_CODE_CRITICAL, ["curl cannot reach Solr, solr seems to be down"])
     try:
         state = json.load(open(state_file))
     except:
-       return (RESULT_CODE_CRITICAL, ["The curl command failed, could not load state file"])
+       return (RESULT_CODE_CRITICAL, ["Get status failed, could not load state file"])
 
     os.remove(state_file)
     cluster_state = state['cluster']['collections']
-    #replica_status_critical = dict()
-    #shard_status_critical = dict()
     outdata = dict()
     outdata['shards'] = list()
     outdata['replicas'] = list()
@@ -118,18 +127,14 @@ def execute(configs={}, parameters={}, host_name=None):
            for replica, replica_data in shard_data['replicas'].iteritems():
               if replica_data['state'] != 'active':
                   rname = '-'.join([key, shard, replica])
-                  #replica_status_critical[rname] = replica_data['state']
                   outdata['replicas'].append({rname: replica_data['state']})
               else:
-                  #return (RESULT_CODE_CRITICAL, ["replica: %s" % replica + " " +"of shard: %s" % shard + " " +"is DOWN"])
                   pass
 
            if shard_data['state'] != 'active':
                sname = '-'.join([key, shard])
-               #shard_status_critical[sname] = shard_data['state']
                outdata['shards'].append({sname: shard_data['state']})
            else:
-               #return (RESULT_CODE_CRITICAL, ["shard: %s" % shard + " " +"of collection: %s" % key + " " +"is DOWN"])
                pass
 
     if outdata['shards'] or outdata['replicas']:
