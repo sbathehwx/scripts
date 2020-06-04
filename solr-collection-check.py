@@ -17,7 +17,8 @@ SOLR_PORT_KEY = 'check.solr.port'
 SOLR_PORT_DEFAULT = '8886'
 SOLR_CONNECTION_TIMEOUT_KEY = 'check.connection.timeout'
 SOLR_CONNECTION_TIMEOUT_DEFAULT = 5
-UI_SSL_ENABLED = '{{infra-solr-env/infra_solr_ssl_enabled}}'
+UI_SSL_ENABLED_KEY = 'check.ssl_config_option'
+UI_SSL_ENABLED_KEY_DEFAULT = '{{infra-solr-env/infra_solr_ssl_enabled}}'
 
 # Kerberos keys
 KRB_EXEC_SEARCH_PATHS_KEY = '{{kerberos-env/executable_search_paths}}'
@@ -32,7 +33,7 @@ RESULT_CODE_UNKNOWN = 'UNKNOWN'
 
 def get_tokens():
     return (SECURITY_ENABLED_KEY, SMOKEUSER_KEYTAB_KEY, SMOKEUSER_PRINCIPAL_KEY,
-            SMOKEUSER_KEY, UI_SSL_ENABLED, KRB_EXEC_SEARCH_PATHS_KEY,
+            SMOKEUSER_KEY, UI_SSL_ENABLED_KEY, KRB_EXEC_SEARCH_PATHS_KEY,
             SOLR_PORT_KEY)
 
 def security_auth(configs, host_name, solr_user):
@@ -77,14 +78,19 @@ def execute(configs={}, parameters={}, host_name=None):
     solr_user = configs[SMOKEUSER_KEY]
 
     ui_ssl_enabled = False
-    if UI_SSL_ENABLED in configs:
-        ui_ssl_enabled = str(configs[UI_SSL_ENABLED]).upper() == 'TRUE'
+    ui_ssl_enabled_key = UI_SSL_ENABLED_KEY_DEFAULT
 
     security_enabled = False
     if SECURITY_ENABLED_KEY in configs:
         security_enabled = str(configs[SECURITY_ENABLED_KEY]).upper() == 'TRUE'
 
     # check parameters
+    if UI_SSL_ENABLED_KEY in parameters:
+        ui_ssl_enabled_key = parameters[UI_SSL_ENABLED_KEY]
+
+    if ui_ssl_enabled_key in configs:
+        ui_ssl_enabled = str(configs[UI_SSL_ENABLED_KEY]).upper() == 'TRUE'
+
     solr_port = SOLR_PORT_DEFAULT
     if SOLR_PORT_KEY in parameters:
         solr_port = parameters[SOLR_PORT_KEY]
