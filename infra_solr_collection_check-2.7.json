@@ -1,0 +1,17 @@
+{
+  "AlertDefinition" : {
+    "component_name" : "INFRA_SOLR",
+    "description" : "This host-level alert is triggered if the Solr Cloud Instance is unreachable.",
+    "enabled" : true,
+    "interval" : 1,
+    "label" : "Infra Solr Collection status",
+    "name" : "infra_solr_collection_status_check",
+    "repeat_tolerance" : 1,
+    "scope" : "ANY",
+    "service_name" : "AMBARI_INFRA_SOLR",
+    "source" : {
+      "path" : "AMBARI_INFRA_SOLR/0.1.0/package/scripts/solr-collection-check.py",
+      "type" : "SCRIPT"
+    }
+  }
+}
